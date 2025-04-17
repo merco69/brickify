@@ -34,10 +34,5 @@ services:
       mountPath: /data
       sizeGB: 100
     plan: pro
-    scaling:
-      minInstances: 1
-      maxInstances: 2
-      targetCPUPercent: 70
-      targetMemoryPercent: 80
     healthCheckPath: /health
     autoDeploy: true 
