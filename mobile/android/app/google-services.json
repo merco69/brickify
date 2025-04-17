@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "212628519486",
+    "project_id": "brickify-ai",
+    "storage_bucket": "brickify-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:212628519486:android:36a13da2b1536157646f6f",
+        "android_client_info": {
+          "package_name": "com.brickify.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDULbSPpMUBGpmB--8S-kSlbfw2HIW-8K4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

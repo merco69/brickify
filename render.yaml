@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: brickify-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python backend/main.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.0
+      - key: PORT
+        value: 8000
+      - key: BLOCKY_STORAGE_PATH
+        value: /data/blocky
+      - key: BLOCKY_MAX_MEMORY_GB
+        value: 16
+      - key: BLOCKY_MAX_STORAGE_GB
+        value: 100
+      - key: BLOCKY_CLEANUP_INTERVAL_HOURS
+        value: 24
+      - key: BLOCKY_MAX_TEMP_FILES
+        value: 1000
+      - key: BLOCKY_MAX_AGE_DAYS
+        value: 30
+      - key: BLOCKY_NUM_WORKERS
+        value: 8
+      - key: BLOCKY_BATCH_SIZE
+        value: 64
+      - key: BLOCKY_PRECISION
+        value: float16
+      - key: BLOCKY_DEVICE
+        value: cuda
+    disk:
+      name: blocky-storage
+      mountPath: /data
+      sizeGB: 100
+    resources:
+      cpu: 4
+      memory: 16GB
+      gpu: 1
+    healthCheckPath: /health
+    autoDeploy: true 

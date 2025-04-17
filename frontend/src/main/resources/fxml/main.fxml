@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns="http://javafx.com/javafx"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.brickify.frontend.controllers.MainController"
+      spacing="10">
+    <padding>
+        <Insets top="10" right="10" bottom="10" left="10"/>
+    </padding>
+
+    <MenuBar>
+        <Menu text="Fichier">
+            <MenuItem text="Nouveau Projet" onAction="#handleNewProject"/>
+            <MenuItem text="Ouvrir Projet..." onAction="#handleOpenProject"/>
+            <MenuItem text="Enregistrer" onAction="#handleSaveProject"/>
+            <SeparatorMenuItem/>
+            <MenuItem text="Exporter..." onAction="#handleExport"/>
+            <SeparatorMenuItem/>
+            <MenuItem text="Quitter" onAction="#handleExit"/>
+        </Menu>
+        <Menu text="Édition">
+            <MenuItem text="Annuler" onAction="#handleUndo"/>
+            <MenuItem text="Rétablir" onAction="#handleRedo"/>
+        </Menu>
+        <Menu text="Affichage">
+            <MenuItem text="Rendu" onAction="#handleRender"/>
+        </Menu>
+    </MenuBar>
+
+    <HBox spacing="10" VBox.vgrow="ALWAYS">
+        <!-- Panneau de gauche pour la liste des pièces -->
+        <VBox spacing="5" prefWidth="200">
+            <Label text="Pièces disponibles"/>
+            <ListView fx:id="partsList" VBox.vgrow="ALWAYS"/>
+        </VBox>
+
+        <!-- Zone centrale pour l'éditeur 3D -->
+        <StackPane fx:id="editorPane" HBox.hgrow="ALWAYS">
+            <!-- Le contenu 3D sera ajouté ici dynamiquement -->
+        </StackPane>
+
+        <!-- Panneau de droite pour les propriétés -->
+        <VBox spacing="5" prefWidth="200">
+            <Label text="Propriétés"/>
+            <TableView fx:id="propertiesTable" VBox.vgrow="ALWAYS"/>
+        </VBox>
+    </HBox>
+
+    <!-- Barre de statut -->
+    <HBox spacing="10">
+        <Label fx:id="statusLabel" text="Prêt"/>
+    </HBox>
+
+</VBox> 

@@ -1,0 +1,41 @@
+name: brickify
+description: "Transformez vos photos en modèles LEGO"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.3 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  image_picker: ^1.0.5
+  http: ^1.1.0
+  flutter_dotenv: ^5.1.0
+  cached_network_image: ^3.3.1
+  provider: ^6.0.5
+  google_mobile_ads: ^4.0.0
+  plugin_platform_interface: ^2.1.8
+  model_viewer_plus: ^1.7.0
+  share_plus: ^7.2.1
+  path_provider: ^2.1.2
+  flutter_gl: ^0.0.21
+  vector_math: ^2.1.4
+  flutter_haptic_feedback: ^1.0.1
+  intl: ^0.18.1
+  geolocator: ^10.0.0
+  geocoding: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  mockito: ^5.4.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env
+    - assets/images/
+    - assets/models/ 

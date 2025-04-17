@@ -1,160 +1,176 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
-from fastapi.security import OAuth2PasswordRequestForm
-from typing import Dict, Optional
-from pydantic import BaseModel, EmailStr
-from ..services.auth_service import AuthService, get_current_user
-from ..services.database_service import DatabaseService
-from ..services.email_service import EmailService
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from typing import List
+from datetime import timedelta
+from jose import JWTError, jwt
+
+from ..services.auth_service import AuthService
+from ..models.user_models import User, UserCreate, UserUpdate, SubscriptionTier
 from ..config import settings
-from models.user_models import User, UserCreate, UserUpdate, Token
 
-router = APIRouter(
-    prefix="/api/auth",
-    tags=["auth"],
-    responses={404: {"description": "Not found"}},
-)
+router = APIRouter(prefix="/api/auth", tags=["auth"])
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
-class PasswordResetRequest(BaseModel):
-    email: EmailStr
+def get_auth_service() -> AuthService:
+    """Dependency pour obtenir une instance du service d'authentification."""
+    return AuthService()
 
-class PasswordReset(BaseModel):
-    token: str
-    new_password: str
+def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
+    """Crée un token JWT."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
 
-class AccountRecoveryRequest(BaseModel):
-    email: EmailStr
-
-async def get_auth_service(db: DatabaseService = Depends(get_db_service)) -> AuthService:
-    return AuthService(db)
-
-async def get_email_service() -> EmailService:
-    return EmailService()
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    auth_service: AuthService = Depends(get_auth_service)
+) -> User:
+    """Récupère l'utilisateur actuel à partir du token."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Impossible de valider les identifiants",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+        
+    user = await auth_service.db.get_user_by_email(email=email)
+    if user is None:
+        raise credentials_exception
+    return user
 
 @router.post("/register", response_model=User)
-async def register(user_data: UserCreate) -> User:
-    """
-    Créer un nouveau compte utilisateur
-    """
+async def register(
+    user_create: UserCreate,
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Enregistre un nouvel utilisateur."""
     try:
-        user = await AuthService.register_user(user_data)
-        return user
+        return await auth_service.register_user(user_create)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
 
-@router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()) -> Dict[str, str]:
-    """
-    Authentifier un utilisateur et retourner un token JWT
-    """
-    try:
-        token = await AuthService.authenticate_user(form_data.username, form_data.password)
-        return token
-    except ValueError as e:
+@router.post("/login")
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Authentifie un utilisateur et retourne un token."""
+    user = await auth_service.authenticate_user(form_data.username, form_data.password)
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
+            detail="Email ou mot de passe incorrect",
             headers={"WWW-Authenticate": "Bearer"},
         )
+        
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=access_token_expires
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
 
 @router.get("/me", response_model=User)
-async def get_current_user_info(current_user: User = Depends(get_current_user)) -> User:
-    """
-    Retourner les informations de l'utilisateur connecté
-    """
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    """Récupère les informations de l'utilisateur connecté."""
     return current_user
 
 @router.put("/me", response_model=User)
-async def update_user(
+async def update_user_me(
     user_update: UserUpdate,
-    current_user: User = Depends(get_current_user)
-) -> User:
-    """
-    Mettre à jour les informations de l'utilisateur connecté
-    """
+    current_user: User = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Met à jour les informations de l'utilisateur connecté."""
+    updated_user = await auth_service.update_user(current_user.id, user_update)
+    if not updated_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Utilisateur non trouvé"
+        )
+    return updated_user
+
+@router.post("/reset-password")
+async def reset_password(
+    email: str,
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Réinitialise le mot de passe d'un utilisateur."""
     try:
-        updated_user = await AuthService.update_user(current_user.id, user_update)
-        return updated_user
+        temp_password = await auth_service.reset_password(email)
+        # TODO: Envoyer le mot de passe temporaire par email
+        return {"message": "Un mot de passe temporaire a été généré"}
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e)
         )
 
-@router.post("/password-reset/request")
-async def request_password_reset(
-    request: PasswordResetRequest,
-    background_tasks: BackgroundTasks,
-    auth_service: AuthService = Depends(get_auth_service),
-    email_service: EmailService = Depends(get_email_service)
-):
-    """Demande une réinitialisation de mot de passe."""
-    token = await auth_service.generate_reset_token(request.email)
-    if not token:
-        # Pour des raisons de sécurité, on renvoie toujours un succès
-        return {"message": "Si l'email existe, un lien de réinitialisation a été envoyé"}
-
-    reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
-    
-    # Envoyer l'email en arrière-plan
-    background_tasks.add_task(
-        email_service.send_password_reset_email,
-        request.email,
-        reset_url
-    )
-
-    return {"message": "Si l'email existe, un lien de réinitialisation a été envoyé"}
-
-@router.post("/password-reset")
-async def reset_password(
-    reset_data: PasswordReset,
+@router.get("/users", response_model=List[User])
+async def get_users(
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(get_current_user),
     auth_service: AuthService = Depends(get_auth_service)
 ):
-    """Réinitialise le mot de passe avec un token valide."""
-    success = await auth_service.reset_password(reset_data.token, reset_data.new_password)
-    if not success:
+    """Récupère la liste des utilisateurs (admin seulement)."""
+    if not current_user.is_admin:
         raise HTTPException(
-            status_code=400,
-            detail="Token invalide ou expiré"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès non autorisé"
         )
-    return {"message": "Mot de passe réinitialisé avec succès"}
+    return await auth_service.get_all_users(skip, limit)
 
-@router.post("/account-recovery/request")
-async def request_account_recovery(
-    request: AccountRecoveryRequest,
-    background_tasks: BackgroundTasks,
-    auth_service: AuthService = Depends(get_auth_service),
-    email_service: EmailService = Depends(get_email_service)
-):
-    """Demande une récupération de compte."""
-    token = await auth_service.generate_account_recovery_token(request.email)
-    if not token:
-        # Pour des raisons de sécurité, on renvoie toujours un succès
-        return {"message": "Si l'email existe, un lien de récupération a été envoyé"}
-
-    recovery_url = f"{settings.FRONTEND_URL}/recover-account?token={token}"
-    
-    # Envoyer l'email en arrière-plan
-    background_tasks.add_task(
-        email_service.send_account_recovery_email,
-        request.email,
-        recovery_url
-    )
-
-    return {"message": "Si l'email existe, un lien de récupération a été envoyé"}
-
-@router.get("/account-recovery/{token}")
-async def recover_account(
-    token: str,
+@router.get("/users/subscription/{tier}", response_model=List[User])
+async def get_users_by_subscription(
+    tier: SubscriptionTier,
+    current_user: User = Depends(get_current_user),
     auth_service: AuthService = Depends(get_auth_service)
 ):
-    """Récupère les informations du compte avec un token valide."""
-    account_info = await auth_service.recover_account(token)
-    if not account_info:
+    """Récupère les utilisateurs par niveau d'abonnement (admin seulement)."""
+    if not current_user.is_admin:
         raise HTTPException(
-            status_code=400,
-            detail="Token invalide ou expiré"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès non autorisé"
         )
-    return account_info 
+    return await auth_service.get_users_by_subscription(tier)
+
+@router.put("/users/{user_id}/subscription")
+async def update_user_subscription(
+    user_id: str,
+    subscription_tier: SubscriptionTier,
+    current_user: User = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Met à jour le niveau d'abonnement d'un utilisateur (admin seulement)."""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès non autorisé"
+        )
+        
+    updated_user = await auth_service.update_subscription(user_id, subscription_tier)
+    if not updated_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Utilisateur non trouvé"
+        )
+    return updated_user 

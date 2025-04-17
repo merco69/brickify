@@ -1,0 +1,7 @@
+com\brickify\frontend\controllers\MainController.class
+com\brickify\frontend\BrickifyApp.class
+com\brickify\frontend\models\LegoPart.class
+com\brickify\frontend\api\ApiClient.class
+com\brickify\frontend\services\LegoService.class
+com\brickify\frontend\Main.class
+com\brickify\frontend\utils\Scene3DUtils.class

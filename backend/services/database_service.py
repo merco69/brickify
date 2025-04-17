@@ -5,7 +5,7 @@ import firebase_admin
 from firebase_admin import firestore
 from ..models.lego_models import LegoAnalysis, LegoAnalysisCreate, LegoAnalysisUpdate
 from ..models.analysis import Analysis
-from ..models.user import User
+from ..models.user_models import User, UserCreate, UserUpdate, SubscriptionTier
 from ..models.stats import UserStats
 from ..models.analysis import AnalysisResult
 
@@ -18,8 +18,8 @@ class DatabaseService:
         """Initialise le service de base de données"""
         self.db = firestore.client()
         self.analyses_collection = self.db.collection('lego_analyses')
-        self.users_collection = "users"
-        self.stats_collection = "user_stats"
+        self.users_collection = self.db.collection('users')
+        self.stats_collection = self.db.collection('user_stats')
         
     async def create_analysis(self, analysis: LegoAnalysisCreate) -> LegoAnalysis:
         """
@@ -219,4 +219,141 @@ class DatabaseService:
             return stats.get("monthly_counts", {}).get(month, 0)
         except Exception as e:
             logger.error(f"Erreur lors de la récupération du compteur mensuel: {e}")
-            return 0 
+            return 0
+
+    async def create_user(self, user: User) -> User:
+        """Crée un nouvel utilisateur dans la base de données."""
+        try:
+            # Création d'un nouveau document
+            doc_ref = self.users_collection.document()
+            user.id = doc_ref.id
+            
+            # Sauvegarde dans Firestore
+            doc_ref.set(user.dict())
+            
+            return user
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la création de l'utilisateur: {str(e)}")
+            raise
+
+    async def get_user(self, user_id: str) -> Optional[User]:
+        """Récupère un utilisateur par son ID."""
+        try:
+            doc_ref = self.users_collection.document(user_id)
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                return None
+                
+            return User(**doc.to_dict())
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération de l'utilisateur: {str(e)}")
+            raise
+
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """Récupère un utilisateur par son email."""
+        try:
+            docs = self.users_collection.where('email', '==', email).limit(1).stream()
+            for doc in docs:
+                return User(**doc.to_dict())
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération de l'utilisateur par email: {str(e)}")
+            raise
+
+    async def update_user(self, user_id: str, update_data: Dict) -> Optional[User]:
+        """Met à jour les informations d'un utilisateur."""
+        try:
+            doc_ref = self.users_collection.document(user_id)
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                return None
+                
+            # Mise à jour des champs
+            doc_ref.update(update_data)
+            
+            # Récupération de l'utilisateur mis à jour
+            updated_doc = doc_ref.get()
+            return User(**updated_doc.to_dict())
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour de l'utilisateur: {str(e)}")
+            raise
+
+    async def delete_user(self, user_id: str) -> bool:
+        """Supprime un utilisateur."""
+        try:
+            doc_ref = self.users_collection.document(user_id)
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                return False
+                
+            doc_ref.delete()
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la suppression de l'utilisateur: {str(e)}")
+            raise
+
+    async def get_all_users(self, skip: int = 0, limit: int = 100) -> List[User]:
+        """Récupère tous les utilisateurs avec pagination."""
+        try:
+            docs = self.users_collection.order_by('created_at').offset(skip).limit(limit).stream()
+            return [User(**doc.to_dict()) for doc in docs]
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des utilisateurs: {str(e)}")
+            raise
+
+    async def get_users_by_subscription(self, subscription_tier: SubscriptionTier) -> List[User]:
+        """Récupère tous les utilisateurs ayant un abonnement spécifique."""
+        try:
+            docs = self.users_collection.where('subscription_tier', '==', subscription_tier).stream()
+            return [User(**doc.to_dict()) for doc in docs]
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des utilisateurs par abonnement: {str(e)}")
+            raise
+
+    async def increment_month_upload_count(self, user_id: str) -> bool:
+        """Incrémente le compteur mensuel d'uploads d'un utilisateur."""
+        try:
+            doc_ref = self.users_collection.document(user_id)
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                return False
+                
+            user_data = doc.to_dict()
+            user_data['month_upload_count'] += 1
+            
+            doc_ref.update({'month_upload_count': user_data['month_upload_count']})
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de l'incrémentation du compteur d'uploads: {str(e)}")
+            raise
+
+    async def reset_month_upload_count(self, user_id: str) -> bool:
+        """Réinitialise le compteur mensuel d'uploads d'un utilisateur."""
+        try:
+            doc_ref = self.users_collection.document(user_id)
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                return False
+                
+            doc_ref.update({
+                'month_upload_count': 0,
+                'reset_date': datetime.utcnow() + timedelta(days=30)
+            })
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la réinitialisation du compteur d'uploads: {str(e)}")
+            raise 

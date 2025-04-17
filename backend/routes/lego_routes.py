@@ -1,6 +1,6 @@
 import logging
 from typing import List, Optional, Dict
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, status, Query
 from fastapi.responses import JSONResponse
 from ..models.lego_models import LegoAnalysis, LegoAnalysisCreate, LegoAnalysisUpdate, AnalysisStatus
 from ..models.lego_models import LegoAnalysis, LegoAnalysisCreate, LegoAnalysisUpdate
@@ -18,7 +18,9 @@ from ..metrics import track_request_metrics, analysis_tracker
 import uuid
 from ..services.subscription_service import SubscriptionService
 from ..services.lego_service import LegoService
-from ..services.auth_service import get_current_user
+from ..services.auth_service import get_current_user, AuthService
+from ..services.lego_converter_service import LegoConverterService
+from ..models.lego_model import LegoModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -232,4 +234,143 @@ async def process_analysis_with_stats(
         )
         
     finally:
-        await analysis_tracker.end_analysis() 
+        await analysis_tracker.end_analysis()
+
+@router.get("/models", response_model=List[LegoModel])
+async def get_models(
+    category: Optional[str] = None,
+    difficulty: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    search: Optional[str] = None,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(AuthService.get_current_user),
+    lego_service: LegoConverterService = Depends(),
+    storage_service: StorageService = Depends()
+):
+    """
+    Récupère la liste des modèles Lego.
+    
+    Args:
+        category: Filtrer par catégorie
+        difficulty: Filtrer par difficulté
+        tags: Filtrer par tags
+        search: Rechercher par nom ou description
+        limit: Nombre maximum de résultats
+        offset: Décalage pour la pagination
+        current_user: Utilisateur actuel
+        lego_service: Service de conversion Lego
+        storage_service: Service de stockage
+        
+    Returns:
+        Liste des modèles Lego
+    """
+    try:
+        # Récupérer les modèles
+        models = await lego_service.get_models(
+            category=category,
+            difficulty=difficulty,
+            tags=tags,
+            search=search,
+            limit=limit,
+            offset=offset
+        )
+        
+        return models
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+@router.get("/models/{model_id}", response_model=LegoModel)
+async def get_model(
+    model_id: str,
+    current_user: User = Depends(AuthService.get_current_user),
+    lego_service: LegoConverterService = Depends(),
+    storage_service: StorageService = Depends()
+):
+    """
+    Récupère un modèle Lego par son ID.
+    
+    Args:
+        model_id: ID du modèle
+        current_user: Utilisateur actuel
+        lego_service: Service de conversion Lego
+        storage_service: Service de stockage
+        
+    Returns:
+        Le modèle Lego
+    """
+    try:
+        # Récupérer le modèle
+        model = await lego_service.get_model(model_id)
+        
+        if not model:
+            raise HTTPException(
+                status_code=404,
+                detail="Modèle non trouvé"
+            )
+        
+        # Vérifier les permissions
+        if not model.is_public and model.user_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Accès non autorisé"
+            )
+        
+        return model
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+@router.delete("/models/{model_id}")
+async def delete_model(
+    model_id: str,
+    current_user: User = Depends(AuthService.get_current_user),
+    lego_service: LegoConverterService = Depends(),
+    storage_service: StorageService = Depends()
+):
+    """
+    Supprime un modèle Lego.
+    
+    Args:
+        model_id: ID du modèle
+        current_user: Utilisateur actuel
+        lego_service: Service de conversion Lego
+        storage_service: Service de stockage
+        
+    Returns:
+        Message de confirmation
+    """
+    try:
+        # Récupérer le modèle
+        model = await lego_service.get_model(model_id)
+        
+        if not model:
+            raise HTTPException(
+                status_code=404,
+                detail="Modèle non trouvé"
+            )
+        
+        # Vérifier les permissions
+        if model.user_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Accès non autorisé"
+            )
+        
+        # Supprimer le modèle
+        await lego_service.delete_model(model_id)
+        
+        return {"message": "Modèle supprimé avec succès"}
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        ) 

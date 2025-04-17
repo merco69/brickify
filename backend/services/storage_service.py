@@ -1,25 +1,21 @@
 import os
 import json
-from typing import List, Dict, Optional, Any
+from typing import List, Optional
 from firebase_admin import storage, credentials, initialize_app, get_app
-from datetime import datetime, timedelta
-import logging
-from ..cache import url_cache
-from ..config import settings
-from ..metrics import track_storage_operation
 import uuid
+import shutil
+import logging
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 class StorageService:
-    """Service de stockage pour les fichiers"""
-    
-    def __init__(self, bucket_name: str = settings.FIREBASE_STORAGE_BUCKET):
+    def __init__(self, bucket_name: str):
         """
-        Initialise le service de stockage
+        Initialise le service de stockage avec Firebase.
         
         Args:
-            bucket_name: Nom du bucket Firebase Storage
+            bucket_name (str): Nom du bucket Firebase Storage
         """
         try:
             app = get_app()
@@ -33,125 +29,246 @@ class StorageService:
                 cred_dict = json.loads(cred_path)
                 cred = credentials.Certificate(cred_dict)
             except json.JSONDecodeError:
-                # Si ce n'est pas un JSON valide, traiter comme un chemin de fichier
+                # Si ce n'est pas un JSON valide, essayer comme un chemin de fichier
                 cred = credentials.Certificate(cred_path)
             
             initialize_app(cred, {'storageBucket': bucket_name})
-        
-        self.bucket = storage.bucket(bucket_name)
-        logger.info(f"StorageService initialisé avec le bucket {bucket_name}")
+        self.bucket = storage.bucket()
 
-    @track_storage_operation("upload")
-    async def upload_model(self, file_content: bytes, user_id: Optional[str] = None) -> str:
+    async def upload_model(self, file_path: str, user_id: str) -> str:
         """
-        Upload un modèle 3D
+        Upload un modèle 3D vers Firebase Storage.
         
         Args:
-            file_content: Contenu du fichier
-            user_id: ID de l'utilisateur (optionnel)
+            file_path (str): Chemin local du fichier
+            user_id (str): ID de l'utilisateur
             
         Returns:
-            Chemin du fichier uploadé
+            str: URL publique du modèle uploadé
         """
-        try:
-            # Création du chemin de destination
-            filename = f"{user_id}/{uuid.uuid4()}.glb" if user_id else f"public/{uuid.uuid4()}.glb"
-            blob = self.bucket.blob(filename)
-            
-            # Upload du fichier
-            blob.upload_from_string(file_content)
-            logger.info(f"Fichier uploadé avec succès: {filename}")
-            
-            return filename
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de l'upload du fichier: {str(e)}")
-            raise
+        file_name = f"{user_id}/{uuid.uuid4()}/{os.path.basename(file_path)}"
+        blob = self.bucket.blob(file_name)
+        
+        await blob.upload_from_filename(file_path)
+        return blob.public_url
 
-    @track_storage_operation("delete")
-    async def delete_model(self, path: str) -> bool:
+    async def delete_model(self, model_path: str) -> None:
         """
-        Supprime un modèle
+        Supprime un modèle 3D de Firebase Storage.
         
         Args:
-            path: Chemin du fichier
-            
-        Returns:
-            True si supprimé, False sinon
+            model_path (str): Chemin du modèle dans le bucket
         """
-        try:
-            blob = self.bucket.blob(path)
-            blob.delete()
-            
-            # Suppression du cache
-            url_cache.delete(path)
-            
-            logger.info(f"Fichier supprimé avec succès: {path}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de la suppression du fichier: {str(e)}")
-            return False
+        blob = self.bucket.blob(model_path)
+        await blob.delete()
 
-    @track_storage_operation("get_url")
-    async def get_model_url(self, path: str, expiration: int = 3600) -> str:
+    async def get_model_url(self, model_path: str) -> str:
         """
-        Récupère l'URL signée d'un modèle
+        Génère une URL signée pour accéder au modèle.
         
         Args:
-            path: Chemin du fichier
-            expiration: Durée de validité de l'URL en secondes
+            model_path (str): Chemin du modèle dans le bucket
             
         Returns:
-            URL signée
+            str: URL signée pour accéder au modèle
+        """
+        blob = self.bucket.blob(model_path)
+        return await blob.generate_signed_url(expiration=3600)  # URL valide pendant 1 heure
+
+    async def get_user_models(self, user_id: str) -> List[str]:
+        """
+        Récupère la liste des URLs des modèles d'un utilisateur.
+        
+        Args:
+            user_id (str): ID de l'utilisateur
+            
+        Returns:
+            List[str]: Liste des URLs des modèles
+        """
+        blobs = self.bucket.list_blobs(prefix=f"{user_id}/")
+        return [blob.public_url for blob in blobs if blob.exists()]
+
+    async def get_model_url(self, model_id: str, user_id: str) -> Optional[str]:
+        """
+        Récupère l'URL d'un modèle spécifique.
+        
+        Args:
+            model_id (str): ID du modèle
+            user_id (str): ID de l'utilisateur
+            
+        Returns:
+            Optional[str]: URL du modèle ou None si non trouvé
+        """
+        blob_path = f"{user_id}/{model_id}"
+        blob = self.bucket.blob(blob_path)
+        
+        if not blob.exists():
+            return None
+            
+        return blob.public_url
+
+    def __init__(self, base_path: str = "storage"):
+        self.base_path = Path(base_path)
+        self.models_path = self.base_path / "models"
+        self.previews_path = self.base_path / "previews"
+        self.instructions_path = self.base_path / "instructions"
+        
+        # Créer les répertoires s'ils n'existent pas
+        self._create_directories()
+    
+    def _create_directories(self):
+        """Crée les répertoires nécessaires s'ils n'existent pas."""
+        for path in [self.base_path, self.models_path, self.previews_path, self.instructions_path]:
+            path.mkdir(parents=True, exist_ok=True)
+    
+    async def save_model(self, file_path: str, user_id: str, model_id: str) -> Optional[str]:
+        """
+        Sauvegarde un modèle 3D dans le stockage.
+        
+        Args:
+            file_path: Chemin du fichier à sauvegarder
+            user_id: ID de l'utilisateur
+            model_id: ID du modèle
+            
+        Returns:
+            Chemin relatif du fichier sauvegardé ou None en cas d'erreur
         """
         try:
-            # Vérification du cache
-            cached_url = url_cache.get(path)
-            if cached_url:
-                return cached_url
+            # Créer le répertoire de l'utilisateur
+            user_dir = self.models_path / str(user_id)
+            user_dir.mkdir(exist_ok=True)
             
-            # Génération de l'URL signée
-            blob = self.bucket.blob(path)
-            url = blob.generate_signed_url(expiration=expiration)
+            # Déterminer l'extension du fichier
+            ext = os.path.splitext(file_path)[1]
             
-            # Mise en cache
-            url_cache.set(path, url, expiration)
+            # Créer le chemin de destination
+            dest_path = user_dir / f"{model_id}{ext}"
             
-            return url
+            # Copier le fichier
+            shutil.copy2(file_path, dest_path)
+            
+            # Retourner le chemin relatif
+            return str(dest_path.relative_to(self.base_path))
             
         except Exception as e:
-            logger.error(f"Erreur lors de la génération de l'URL: {str(e)}")
-            raise
-
-    @track_storage_operation("list")
-    async def list_user_models(self, user_id: str) -> List[Dict[str, Any]]:
+            logger.error(f"Erreur lors de la sauvegarde du modèle: {str(e)}")
+            return None
+    
+    async def save_preview(self, preview_path: str, user_id: str, model_id: str) -> Optional[str]:
         """
-        Liste les modèles d'un utilisateur
+        Sauvegarde une prévisualisation du modèle.
+        
+        Args:
+            preview_path: Chemin de l'image de prévisualisation
+            user_id: ID de l'utilisateur
+            model_id: ID du modèle
+            
+        Returns:
+            Chemin relatif de l'image sauvegardée ou None en cas d'erreur
+        """
+        try:
+            # Créer le répertoire de l'utilisateur
+            user_dir = self.previews_path / str(user_id)
+            user_dir.mkdir(exist_ok=True)
+            
+            # Créer le chemin de destination
+            dest_path = user_dir / f"{model_id}.png"
+            
+            # Copier l'image
+            shutil.copy2(preview_path, dest_path)
+            
+            # Retourner le chemin relatif
+            return str(dest_path.relative_to(self.base_path))
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la sauvegarde de la prévisualisation: {str(e)}")
+            return None
+    
+    async def save_instructions(self, instructions_path: str, user_id: str, model_id: str) -> Optional[str]:
+        """
+        Sauvegarde les instructions de montage.
+        
+        Args:
+            instructions_path: Chemin du fichier d'instructions
+            user_id: ID de l'utilisateur
+            model_id: ID du modèle
+            
+        Returns:
+            Chemin relatif du fichier sauvegardé ou None en cas d'erreur
+        """
+        try:
+            # Créer le répertoire de l'utilisateur
+            user_dir = self.instructions_path / str(user_id)
+            user_dir.mkdir(exist_ok=True)
+            
+            # Créer le chemin de destination
+            dest_path = user_dir / f"{model_id}.pdf"
+            
+            # Copier le fichier
+            shutil.copy2(instructions_path, dest_path)
+            
+            # Retourner le chemin relatif
+            return str(dest_path.relative_to(self.base_path))
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la sauvegarde des instructions: {str(e)}")
+            return None
+    
+    async def delete_model(self, user_id: str, model_id: str) -> bool:
+        """
+        Supprime un modèle et ses fichiers associés.
         
         Args:
             user_id: ID de l'utilisateur
+            model_id: ID du modèle
             
         Returns:
-            Liste des modèles avec leurs URLs
+            True si la suppression a réussi, False sinon
         """
         try:
-            # Liste des blobs
-            blobs = self.bucket.list_blobs(prefix=f"{user_id}/")
+            # Supprimer le modèle
+            model_path = self.models_path / str(user_id) / f"{model_id}.*"
+            for file in self.models_path.glob(str(model_path)):
+                file.unlink()
             
-            # Récupération des URLs
-            models = []
-            for blob in blobs:
-                url = await self.get_model_url(blob.name)
-                models.append({
-                    "path": blob.name,
-                    "url": url,
-                    "size": blob.size,
-                    "created": blob.time_created
-                })
+            # Supprimer la prévisualisation
+            preview_path = self.previews_path / str(user_id) / f"{model_id}.png"
+            if preview_path.exists():
+                preview_path.unlink()
             
-            return models
+            # Supprimer les instructions
+            instructions_path = self.instructions_path / str(user_id) / f"{model_id}.pdf"
+            if instructions_path.exists():
+                instructions_path.unlink()
+            
+            return True
             
         except Exception as e:
-            logger.error(f"Erreur lors de la liste des modèles: {str(e)}")
-            raise 
+            logger.error(f"Erreur lors de la suppression du modèle: {str(e)}")
+            return False
+    
+    async def get_model_path(self, user_id: str, model_id: str) -> Optional[str]:
+        """
+        Récupère le chemin d'un modèle.
+        
+        Args:
+            user_id: ID de l'utilisateur
+            model_id: ID du modèle
+            
+        Returns:
+            Chemin du modèle ou None si non trouvé
+        """
+        try:
+            model_dir = self.models_path / str(user_id)
+            if not model_dir.exists():
+                return None
+            
+            # Chercher le fichier avec n'importe quelle extension
+            for file in model_dir.glob(f"{model_id}.*"):
+                return str(file)
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération du chemin du modèle: {str(e)}")
+            return None 

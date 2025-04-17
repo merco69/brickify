@@ -2,7 +2,9 @@ services:
   - type: web
     name: brickify-api
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      pip install -r requirements.txt
+      apt-get update && apt-get install -y meshroom
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
@@ -23,6 +25,32 @@ services:
         value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: 30
+      - key: MESHROOM_PATH
+        value: /usr/bin/meshroom
+      - key: BRICKLINK_API_URL
+        value: https://api.bricklink.com/api/store/v1
+      - key: BRICKLINK_API_KEY
+        sync: false
+      - key: BRICKLINK_API_SECRET
+        sync: false
+      - key: BRICKLINK_ACCESS_TOKEN
+        sync: false
+      - key: BRICKLINK_ACCESS_TOKEN_SECRET
+        sync: false
+      - key: STORAGE_TYPE
+        value: gcs
+      - key: STORAGE_BUCKET
+        value: brickify-models
+      - key: GOOGLE_CLOUD_PROJECT
+        sync: false
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        sync: false
+      - key: GOOGLE_CLOUD_PROJECT_ID
+        sync: false
+      - key: GOOGLE_CLOUD_STORAGE_BUCKET
+        value: brickify-models
+      - key: GOOGLE_CLOUD_CREDENTIALS
+        sync: false
 
 databases:
   - name: brickify-db
