@@ -33,9 +33,9 @@ services:
       name: blocky-storage
       mountPath: /data
       sizeGB: 100
-    resources:
-      cpu: 4
-      memory: 16GB
-      gpu: 1
+    plan: pro
+    scaling:
+      minInstances: 1
+      maxInstances: 1
     healthCheckPath: /health
     autoDeploy: true 
