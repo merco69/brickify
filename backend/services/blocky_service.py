@@ -8,63 +8,30 @@ import torch.nn as nn
 import torch.optim as optim
 from datetime import datetime
 
-from ..services.storage_service import StorageService
-from ..services.db_service import DatabaseService
+from services.storage_service import StorageService
+from services.db_service import DatabaseService
 
 logger = logging.getLogger(__name__)
 
 class BlockyService:
     def __init__(
         self,
-        db_service: DatabaseService,
-        storage_service: StorageService,
-        models_dir: str = "models/blocky"
+        resource_manager,
+        optimizer
     ):
         """
         Initialise le service Blocky.
         
         Args:
-            db_service: Service de base de données
-            storage_service: Service de stockage
-            models_dir: Dossier des modèles
+            resource_manager: Gestionnaire de ressources
+            optimizer: Optimiseur de modèles
         """
-        self.db = db_service
-        self.storage = storage_service
-        self.models_dir = Path(models_dir)
-        self.models_dir.mkdir(parents=True, exist_ok=True)
+        self.resource_manager = resource_manager
+        self.optimizer = optimizer
         
-        # Charger ou initialiser les modèles
-        self.models = self._load_models()
-        
-    def _load_models(self) -> Dict:
-        """
-        Charge les modèles depuis le stockage.
-        
-        Returns:
-            Dict contenant les modèles
-        """
-        try:
-            model_files = list(self.models_dir.glob("*.pt"))
-            models = {}
-            
-            for model_file in model_files:
-                model_name = model_file.stem
-                model_path = str(model_file)
-                
-                # Charger le modèle
-                model = torch.load(model_path)
-                models[model_name] = model
-                
-            return models
-            
-        except Exception as e:
-            logger.error(f"Erreur lors du chargement des modèles: {str(e)}")
-            return {}
-            
     async def convert_to_lego(
         self,
         model_path: str,
-        user_id: str,
         settings: Dict
     ) -> Tuple[bool, str]:
         """
@@ -72,7 +39,6 @@ class BlockyService:
         
         Args:
             model_path: Chemin du modèle 3D
-            user_id: ID de l'utilisateur
             settings: Paramètres de conversion
             
         Returns:
@@ -83,13 +49,8 @@ class BlockyService:
             if not os.path.exists(model_path):
                 return False, "Le fichier modèle n'existe pas"
                 
-            # Vérifier les permissions
-            if not await self._check_permissions(user_id):
-                return False, "Vous n'avez pas les permissions nécessaires"
-                
             # Créer un dossier temporaire
-            temp_dir = Path("temp") / f"conversion_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            temp_dir.mkdir(parents=True, exist_ok=True)
+            temp_dir = self.resource_manager.get_temp_dir("conversion")
             
             try:
                 # Copier le modèle dans le dossier temporaire
@@ -98,20 +59,21 @@ class BlockyService:
                 with open(model_path, 'rb') as src, open(temp_model_path, 'wb') as dst:
                     dst.write(src.read())
                     
-                # Convertir le modèle
-                success = await self._convert_model(temp_model_path, settings)
-                
-                if success:
-                    # Sauvegarder le résultat
-                    result_path = await self._save_result(temp_dir, user_id)
-                    return True, f"Conversion réussie: {result_path}"
-                else:
-                    return False, "Erreur lors de la conversion"
+                # Optimiser le modèle
+                success, message = self.optimizer.optimize_mesh(temp_model_path, settings)
+                if not success:
+                    return False, f"Erreur d'optimisation: {message}"
                     
+                # Convertir en LEGO
+                success, message = self.optimizer.convert_to_lego(temp_model_path, settings)
+                if not success:
+                    return False, f"Erreur de conversion: {message}"
+                    
+                return True, message
+                
             finally:
-                # Nettoyer le dossier temporaire
-                import shutil
-                shutil.rmtree(temp_dir)
+                # Le gestionnaire de ressources nettoiera le dossier temporaire
+                pass
                 
         except Exception as e:
             logger.error(f"Erreur lors de la conversion: {str(e)}")
