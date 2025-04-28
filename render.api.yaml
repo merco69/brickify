@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: brickify-api
+    env: python
+    region: frankfurt
+    plan: starter  # Plan sans GPU pour l'API
+    buildCommand: |
+      python -m pip install --upgrade pip
+      pip install -r backend/api/requirements.txt
+    startCommand: cd backend/api && uvicorn main:app --host 0.0.0.0 --port $PORT --workers 4
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.0
+      - key: PORT
+        value: 8000
+      - key: AI_SERVICE_URL
+        sync: false  # URL du service AI à configurer
+      - key: DATABASE_URL
+        sync: false
+      - key: STORAGE_PATH
+        value: /data/storage
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 10
+    scaling:
+      minInstances: 1
+      maxInstances: 3
+      targetMemoryPercent: 70
+      targetCPUPercent: 70
+    healthCheckPath: /health
+    autoDeploy: true 
