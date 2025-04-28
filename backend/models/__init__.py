@@ -2,16 +2,21 @@
 Models pour l'application Brickify.
 """
 
-from .lego_models import LegoAnalysis, LegoAnalysisCreate, LegoAnalysisUpdate
-from .analysis import Analysis, AnalysisResult
+from .lego_models import (
+    LegoAnalysis as Analysis,
+    LegoAnalysisCreate,
+    LegoAnalysisUpdate,
+    AnalysisStatus,
+    LegoBrick as AnalysisResult
+)
 from .user_models import User, UserCreate, UserUpdate, SubscriptionTier
 from .stats import UserStats
 
 __all__ = [
-    'LegoAnalysis',
+    'Analysis',
     'LegoAnalysisCreate',
     'LegoAnalysisUpdate',
-    'Analysis',
+    'AnalysisStatus',
     'AnalysisResult',
     'User',
     'UserCreate',
