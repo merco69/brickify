@@ -8,11 +8,11 @@ from typing import Dict, Optional
 import time
 import torch
 
-from backend.services.blocky_service import BlockyService
-from backend.services.blocky_resource_manager import BlockyResourceManager
-from backend.services.blocky_optimizer import BlockyOptimizer
-from backend.services.storage_service import StorageService
-from backend.services.database_service import DatabaseService
+from services.blocky_service import BlockyService
+from services.blocky_resource_manager import BlockyResourceManager
+from services.blocky_optimizer import BlockyOptimizer
+from services.storage_service import StorageService
+from services.database_service import DatabaseService
 
 # Configuration des logs
 logging.basicConfig(

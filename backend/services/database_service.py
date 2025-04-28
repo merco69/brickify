@@ -3,11 +3,10 @@ from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import firebase_admin
 from firebase_admin import firestore
-from ..models.lego_models import LegoAnalysis, LegoAnalysisCreate, LegoAnalysisUpdate
-from ..models.analysis import Analysis
-from ..models.user_models import User, UserCreate, UserUpdate, SubscriptionTier
-from ..models.stats import UserStats
-from ..models.analysis import AnalysisResult
+from models.lego_models import LegoAnalysis, LegoAnalysisCreate, LegoAnalysisUpdate
+from models.analysis import Analysis, AnalysisResult
+from models.user_models import User, UserCreate, UserUpdate, SubscriptionTier
+from models.stats import UserStats
 
 logger = logging.getLogger(__name__)
 

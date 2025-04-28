@@ -22,5 +22,6 @@ mkdir -p /data/storage/results
 chmod -R 755 /data/storage
 
 # Démarrer l'application
-cd /opt/render/project/src
-python -m backend.main 
+cd /opt/render/project/src/backend
+export PYTHONPATH=/opt/render/project/src/backend:$PYTHONPATH
+uvicorn main:app --host 0.0.0.0 --port $PORT --workers 4 --log-level info 
