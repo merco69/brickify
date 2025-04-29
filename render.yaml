@@ -2,37 +2,79 @@ services:
   - type: web
     name: brickify-api
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python backend/main.py
+    region: frankfurt  # Europe pour une meilleure latence
+    plan: pro  # Plan avec GPU
+    buildCommand: |
+      /opt/render/project/src/.venv/bin/python3.9 -m pip install --upgrade pip
+      pip install torch==2.0.0+cu117 torchvision==0.15.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
+      chmod +x backend/install_pytorch3d.sh
+      sudo ./backend/install_pytorch3d.sh
+      pip install -r backend/requirements.txt
+    startCommand: chmod +x backend/start.sh && ./backend/start.sh
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
       - key: PORT
         value: 8000
-      - key: BLOCKY_STORAGE_PATH
-        value: /data/blocky
-      - key: BLOCKY_MAX_MEMORY_GB
-        value: 16
-      - key: BLOCKY_MAX_STORAGE_GB
-        value: 100
-      - key: BLOCKY_CLEANUP_INTERVAL_HOURS
-        value: 24
-      - key: BLOCKY_MAX_TEMP_FILES
-        value: 1000
-      - key: BLOCKY_MAX_AGE_DAYS
+      - key: STORAGE_PATH
+        value: /data/storage
+      - key: MAX_MEMORY_MB
+        value: 16384  # 16GB RAM
+      - key: MAX_STORAGE_GB
+        value: 50  # 50GB Storage
+      - key: CLEANUP_INTERVAL_MINS
         value: 30
-      - key: BLOCKY_NUM_WORKERS
-        value: 8
-      - key: BLOCKY_BATCH_SIZE
-        value: 64
-      - key: BLOCKY_PRECISION
-        value: float16
-      - key: BLOCKY_DEVICE
+      - key: MAX_TEMP_FILES
+        value: 1000
+      - key: MAX_FILE_AGE_HOURS
+        value: 24
+      - key: DEVICE
         value: cuda
+      - key: NUM_WORKERS
+        value: 4
+      - key: BATCH_SIZE
+        value: 32
+      - key: PRECISION
+        value: float16
     disk:
-      name: blocky-storage
+      name: data
       mountPath: /data
-      sizeGB: 100
-    plan: pro
+      sizeGB: 50
+    scaling:
+      minInstances: 1
+      maxInstances: 3
+      targetMemoryPercent: 80
+      targetCPUPercent: 80
     healthCheckPath: /health
-    autoDeploy: true 
+    autoDeploy: true
+    gpu:
+      enabled: true
+      type: t4  # NVIDIA T4 GPU
+
+  - type: web
+    name: brickify-ai-service
+    env: docker
+    region: frankfurt
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    envVars:
+      - key: PORT
+        value: 8001
+      - key: DEVICE
+        value: cpu
+      - key: STORAGE_PATH
+        value: /app/storage
+      - key: CACHE_PATH
+        value: /app/cache
+      - key: MODELS_PATH
+        value: /app/models
+      - key: LOG_LEVEL
+        value: info
+      - key: NUM_WORKERS
+        value: 2
+      - key: BATCH_SIZE
+        value: 16
+    disk:
+      name: storage
+      mountPath: /app/storage
+      sizeGB: 1 
