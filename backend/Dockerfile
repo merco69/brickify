@@ -7,8 +7,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copie des fichiers nécessaires
-COPY . .
+# Copie des fichiers de l'application
+COPY ai_service ./ai_service
+COPY requirements.txt .
 
 # Installation des dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt
