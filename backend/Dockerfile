@@ -8,11 +8,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copie des fichiers de l'application
-COPY ai_service ./ai_service
-COPY requirements.txt .
+COPY . .
 
 # Installation des dépendances Python
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r ai_service/requirements.txt
 
 # Création des répertoires nécessaires
 RUN mkdir -p /app/storage /app/cache /app/models
