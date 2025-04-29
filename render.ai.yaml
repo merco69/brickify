@@ -3,33 +3,27 @@ services:
     name: brickify-ai
     env: python
     region: frankfurt
-    plan: pro  # Plan avec GPU pour l'IA
-    buildCommand: |
-      python -m pip install --upgrade pip
-      pip install torch==2.0.0+cu117 torchvision==0.15.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
-      chmod +x backend/ai_service/install_pytorch3d.sh
-      sudo ./backend/ai_service/install_pytorch3d.sh
-      pip install -r backend/ai_service/requirements.txt
-    startCommand: cd backend/ai_service && python -m uvicorn main:app --host 0.0.0.0 --port $PORT --workers 2
+    plan: free
+    rootDir: backend/ai_service
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
-        value: 3.9.0
-      - key: PORT
-        value: 8001
-      - key: STORAGE_PATH
-        value: /data/storage
-      - key: MAX_MEMORY_MB
-        value: 16384  # 16GB RAM
-      - key: MAX_STORAGE_GB
-        value: 50  # 50GB Storage
+        value: 3.11.0
       - key: DEVICE
-        value: cuda
+        value: cpu
+      - key: STORAGE_PATH
+        value: /opt/render/project/src/storage
+      - key: CACHE_PATH
+        value: /opt/render/project/src/cache
+      - key: MODELS_PATH
+        value: /opt/render/project/src/models
+      - key: LOG_LEVEL
+        value: info
       - key: NUM_WORKERS
         value: 2
       - key: BATCH_SIZE
-        value: 32
-      - key: PRECISION
-        value: float16
+        value: 16
     disk:
       name: data
       mountPath: /data
