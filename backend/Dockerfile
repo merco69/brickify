@@ -2,11 +2,22 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY backend/requirements.txt .
+# Installation des dépendances système
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copie des fichiers nécessaires
+COPY . .
+
+# Installation des dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY backend/ .
+# Création des répertoires nécessaires
+RUN mkdir -p /app/storage /app/cache /app/models
 
-EXPOSE 8080
+# Exposition du port
+EXPOSE 8001
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"] 
+# Commande de démarrage
+CMD ["python", "-m", "uvicorn", "ai_service.main:app", "--host", "0.0.0.0", "--port", "8001"] 

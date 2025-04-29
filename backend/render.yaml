@@ -52,6 +52,61 @@ services:
       - key: GOOGLE_CLOUD_CREDENTIALS
         sync: false
 
+  - type: web
+    name: brickify-ai
+    env: docker
+    dockerfilePath: ./ai_service/Dockerfile
+    region: oregon
+    plan: pro
+    scaling:
+      minInstances: 1
+      maxInstances: 2
+    envVars:
+      - key: PORT
+        value: 8001
+      - key: STORAGE_PATH
+        value: /app/storage
+      - key: CACHE_PATH
+        value: /app/cache
+      - key: MODELS_PATH
+        value: /app/models
+      - key: NUM_WORKERS
+        value: 4
+      - key: LOG_LEVEL
+        value: info
+      - key: DEVICE
+        value: cuda
+      - key: BATCH_SIZE
+        value: 32
+      - key: PRECISION
+        value: float32
+      - key: REDIS_URL
+        fromService:
+          name: brickify-redis
+          type: redis
+          property: connectionString
+      - key: BRICKLINK_API_URL
+        value: https://api.bricklink.com/api/v2
+      - key: BRICKLINK_API_KEY
+        sync: false
+      - key: BRICKLINK_API_SECRET
+        sync: false
+      - key: LEGO_API_URL
+        value: https://api.lego.com/v1
+      - key: LEGO_API_KEY
+        sync: false
+    healthCheckPath: /health
+    disk:
+      name: ai-storage
+      mountPath: /app/storage
+      sizeGB: 50
+
+  - type: redis
+    name: brickify-redis
+    ipAllowList: []
+    plan: free
+    maxmemoryPolicy: noeviction
+
 databases:
   - name: brickify-db
     databaseName: brickify
