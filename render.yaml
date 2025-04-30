@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: brickify-ai-kfl
+    name: brickify-ai-kfl2
     env: docker
     dockerfilePath: ./ai/Dockerfile
     region: oregon
