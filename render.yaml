@@ -2,8 +2,8 @@ services:
   - type: web
     name: brickify-ai-kfl2
     env: docker
-    rootDirectory: ai
-    dockerfilePath: Dockerfile
+    buildCommand: docker build -t brickify-ai-kfl2 -f ai/Dockerfile .
+    startCommand: docker run -p 8000:8000 brickify-ai-kfl2
     region: oregon
     healthCheckPath: /health
     envVars:
