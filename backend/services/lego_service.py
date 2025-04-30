@@ -3,7 +3,7 @@ from typing import List, Optional, Dict
 from datetime import datetime
 
 from ..models.lego_model import LegoModel, LegoPart
-from .db_service import DatabaseService
+from .database_service import DatabaseService
 from .storage_service import StorageService
 
 logger = logging.getLogger(__name__)

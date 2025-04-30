@@ -7,7 +7,7 @@ from typing import List, Optional
 from ..models.project import Project
 from ..services.meshroom_service import MeshroomService
 from ..services.storage_service import StorageService
-from .db_service import DatabaseService
+from .database_service import DatabaseService
 
 logger = logging.getLogger(__name__)
 

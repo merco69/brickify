@@ -17,6 +17,28 @@ services:
     networks:
       - brickify-network
 
+  ai_service:
+    build:
+      context: .
+      dockerfile: backend/ai_service/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - STORAGE_PATH=/app/storage
+      - DEVICE=cuda
+      - MAX_MEMORY_MB=4096
+    volumes:
+      - ai_storage:/app/storage
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - brickify-network
+
   frontend:
     build:
       context: .
@@ -73,6 +95,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  ai_storage:
 
 networks:
   brickify-network:

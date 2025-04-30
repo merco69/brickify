@@ -16,233 +16,146 @@ logger = logging.getLogger(__name__)
 class BlockyResourceManager:
     def __init__(
         self,
-        base_dir: str = "/data/blocky",
-        max_memory_gb: float = 8.0,
-        max_storage_gb: float = 50.0,
-        cleanup_interval_hours: int = 24,
-        max_temp_files: int = 100,
-        max_age_days: int = 7
+        base_dir: Path,
+        max_memory_mb: int = 8192,
+        max_storage_mb: int = 51200,
+        cleanup_interval: int = 3600,
+        max_temp_files: int = 1000,
+        max_file_age_hours: int = 24
     ):
         """
-        Initialise le gestionnaire de ressources pour Blocky.
+        Initialise le gestionnaire de ressources.
         
         Args:
-            base_dir: Dossier de base pour le stockage
-            max_memory_gb: Mémoire maximale en GB
-            max_storage_gb: Stockage maximal en GB
-            cleanup_interval_hours: Intervalle de nettoyage en heures
-            max_temp_files: Nombre maximal de fichiers temporaires
-            max_age_days: Âge maximal des fichiers en jours
+            base_dir: Répertoire de base
+            max_memory_mb: Limite mémoire en MB
+            max_storage_mb: Limite stockage en MB
+            cleanup_interval: Intervalle de nettoyage en secondes
+            max_temp_files: Nombre maximum de fichiers temporaires
+            max_file_age_hours: Age maximum des fichiers en heures
         """
         self.base_dir = Path(base_dir)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Dossiers de stockage
-        self.models_dir = self.base_dir / "models"
         self.temp_dir = self.base_dir / "temp"
         self.cache_dir = self.base_dir / "cache"
         self.results_dir = self.base_dir / "results"
         
-        for dir_path in [self.models_dir, self.temp_dir, self.cache_dir, self.results_dir]:
-            dir_path.mkdir(exist_ok=True)
-            
-        # Paramètres de ressources
-        self.max_memory_bytes = max_memory_gb * 1024 * 1024 * 1024
-        self.max_storage_bytes = max_storage_gb * 1024 * 1024 * 1024
-        self.cleanup_interval = cleanup_interval_hours * 3600
+        self.max_memory = max_memory_mb * 1024 * 1024  # En bytes
+        self.max_storage = max_storage_mb * 1024 * 1024  # En bytes
+        self.cleanup_interval = cleanup_interval
         self.max_temp_files = max_temp_files
-        self.max_age = timedelta(days=max_age_days)
+        self.max_file_age = timedelta(hours=max_file_age_hours)
         
-        # Verrou pour les opérations concurrentes
-        self.lock = threading.Lock()
+        # Créer les répertoires
+        for directory in [self.temp_dir, self.cache_dir, self.results_dir]:
+            directory.mkdir(parents=True, exist_ok=True)
+            
+        # Démarrer la boucle de nettoyage
+        self.cleanup_task = asyncio.create_task(self._cleanup_loop())
         
-        # Démarrer le thread de nettoyage
-        self.cleanup_thread = threading.Thread(
-            target=self._cleanup_loop,
-            daemon=True
-        )
-        self.cleanup_thread.start()
-        
-        logger.info(f"BlockyResourceManager initialisé avec {max_memory_gb}GB de mémoire et {max_storage_gb}GB de stockage")
-        
-    def get_temp_dir(self, prefix: str = "temp") -> Path:
+    async def get_temp_dir(self, prefix: str = "") -> Path:
         """
-        Crée et retourne un dossier temporaire.
+        Crée et retourne un répertoire temporaire.
         
         Args:
-            prefix: Préfixe pour le nom du dossier
+            prefix: Préfixe pour le nom du répertoire
             
         Returns:
-            Chemin du dossier temporaire
+            Path: Chemin du répertoire temporaire
         """
-        with self.lock:
-            # Vérifier l'espace disponible
-            self._check_storage_space()
-            
-            # Créer un dossier temporaire unique
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            temp_dir = self.temp_dir / f"{prefix}_{timestamp}"
-            temp_dir.mkdir(exist_ok=True)
-            
-            return temp_dir
-            
-    def get_cache_path(self, key: str, extension: str = "") -> Path:
+        await self._check_resources()
+        temp_dir = self.temp_dir / f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        return temp_dir
+        
+    async def get_cache_path(self, key: str) -> Path:
         """
-        Retourne le chemin d'un fichier en cache.
+        Retourne le chemin pour un fichier en cache.
         
         Args:
-            key: Clé unique pour le cache
-            extension: Extension du fichier
+            key: Clé unique pour le fichier
             
         Returns:
-            Chemin du fichier en cache
+            Path: Chemin du fichier en cache
         """
-        # Créer un nom de fichier basé sur la clé
-        filename = f"{key}{extension}"
-        return self.cache_dir / filename
+        await self._check_resources()
+        return self.cache_dir / key
         
-    def get_result_path(self, user_id: str, model_name: str) -> Path:
+    async def get_result_path(self, user_id: str, model_id: str) -> Path:
         """
-        Retourne le chemin pour sauvegarder un résultat.
+        Retourne le chemin pour un fichier résultat.
         
         Args:
             user_id: ID de l'utilisateur
-            model_name: Nom du modèle
+            model_id: ID du modèle
             
         Returns:
-            Chemin pour le résultat
+            Path: Chemin du fichier résultat
         """
-        # Créer un dossier pour l'utilisateur
-        user_dir = self.results_dir / user_id
-        user_dir.mkdir(exist_ok=True)
+        await self._check_resources()
+        result_dir = self.results_dir / user_id
+        result_dir.mkdir(parents=True, exist_ok=True)
+        return result_dir / f"{model_id}.stl"
         
-        # Créer un nom de fichier unique
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return user_dir / f"{model_name}_{timestamp}"
-        
-    def cleanup_temp_files(self) -> int:
-        """
-        Nettoie les fichiers temporaires.
-        
-        Returns:
-            Nombre de fichiers supprimés
-        """
-        with self.lock:
-            count = 0
-            now = datetime.now()
-            
-            # Lister tous les fichiers temporaires
-            temp_files = list(self.temp_dir.glob("*"))
-            
-            # Trier par date de modification
-            temp_files.sort(key=lambda x: x.stat().st_mtime)
-            
-            # Supprimer les fichiers trop anciens
-            for file_path in temp_files:
-                file_age = datetime.fromtimestamp(file_path.stat().st_mtime)
-                if now - file_age > self.max_age:
-                    try:
-                        if file_path.is_file():
-                            file_path.unlink()
-                        else:
-                            shutil.rmtree(file_path)
-                        count += 1
-                    except Exception as e:
-                        logger.error(f"Erreur lors de la suppression de {file_path}: {str(e)}")
-                        
-            # Si trop de fichiers, supprimer les plus anciens
-            if len(temp_files) > self.max_temp_files:
-                for file_path in temp_files[:len(temp_files) - self.max_temp_files]:
-                    try:
-                        if file_path.is_file():
-                            file_path.unlink()
-                        else:
-                            shutil.rmtree(file_path)
-                        count += 1
-                    except Exception as e:
-                        logger.error(f"Erreur lors de la suppression de {file_path}: {str(e)}")
-                        
-            return count
-            
-    def _check_storage_space(self):
-        """
-        Vérifie l'espace de stockage disponible.
-        """
-        # Obtenir l'espace utilisé
-        total_size = sum(f.stat().st_size for f in self.base_dir.rglob('*') if f.is_file())
-        
-        # Si l'espace est presque plein, nettoyer
-        if total_size > self.max_storage_bytes * 0.9:
-            logger.warning(f"Espace de stockage presque plein ({total_size / (1024**3):.2f}GB). Nettoyage...")
-            self.cleanup_temp_files()
-            
-    def _check_memory_usage(self):
-        """
-        Vérifie l'utilisation de la mémoire.
-        """
-        # Obtenir l'utilisation de la mémoire
-        memory = psutil.Process().memory_info().rss
-        
-        # Si la mémoire est presque pleine, forcer le garbage collector
-        if memory > self.max_memory_bytes * 0.8:
-            logger.warning(f"Mémoire presque pleine ({memory / (1024**3):.2f}GB). Nettoyage...")
-            gc.collect()
-            torch.cuda.empty_cache() if torch.cuda.is_available() else None
-            
-    def _cleanup_loop(self):
-        """
-        Boucle de nettoyage périodique.
-        """
+    async def _cleanup_loop(self):
+        """Boucle de nettoyage périodique."""
         while True:
             try:
-                # Attendre l'intervalle de nettoyage
-                time.sleep(self.cleanup_interval)
-                
-                # Nettoyer les fichiers temporaires
-                count = self.cleanup_temp_files()
-                if count > 0:
-                    logger.info(f"Nettoyage automatique: {count} fichiers supprimés")
-                    
-                # Vérifier l'utilisation de la mémoire
-                self._check_memory_usage()
-                
+                await self._cleanup_temp_files()
+                await self._check_resources()
+                await asyncio.sleep(self.cleanup_interval)
             except Exception as e:
                 logger.error(f"Erreur dans la boucle de nettoyage: {str(e)}")
+                await asyncio.sleep(60)  # Attendre avant de réessayer
                 
-    def get_resource_stats(self) -> Dict:
+    async def _cleanup_temp_files(self):
+        """Nettoie les fichiers temporaires."""
+        now = datetime.now()
+        
+        # Parcourir les fichiers temporaires
+        for path in self.temp_dir.glob("**/*"):
+            if not path.is_file():
+                continue
+                
+            # Vérifier l'âge du fichier
+            age = now - datetime.fromtimestamp(path.stat().st_mtime)
+            if age > self.max_file_age:
+                try:
+                    path.unlink()
+                    logger.info(f"Fichier temporaire supprimé: {path}")
+                except Exception as e:
+                    logger.error(f"Erreur lors de la suppression de {path}: {str(e)}")
+                    
+    async def _check_resources(self):
+        """Vérifie l'utilisation des ressources."""
+        # Vérifier la mémoire
+        memory_usage = psutil.Process().memory_info().rss
+        if memory_usage > self.max_memory:
+            logger.warning("Limite mémoire atteinte, nettoyage...")
+            gc.collect()
+            
+        # Vérifier le stockage
+        total_size = sum(f.stat().st_size for f in self.base_dir.glob("**/*") if f.is_file())
+        if total_size > self.max_storage:
+            logger.warning("Limite stockage atteinte, nettoyage...")
+            await self._cleanup_temp_files()
+            
+    async def get_resource_stats(self) -> Dict:
         """
-        Récupère les statistiques d'utilisation des ressources.
+        Retourne les statistiques d'utilisation des ressources.
         
         Returns:
-            Statistiques d'utilisation
+            Dict: Statistiques des ressources
         """
-        # Obtenir l'espace utilisé
-        total_size = sum(f.stat().st_size for f in self.base_dir.rglob('*') if f.is_file())
+        process = psutil.Process()
+        memory_usage = process.memory_info().rss
         
-        # Obtenir l'utilisation de la mémoire
-        memory = psutil.Process().memory_info().rss
-        
-        # Compter les fichiers
-        temp_count = len(list(self.temp_dir.glob("*")))
-        cache_count = len(list(self.cache_dir.glob("*")))
-        results_count = len(list(self.results_dir.glob("*")))
+        total_size = sum(f.stat().st_size for f in self.base_dir.glob("**/*") if f.is_file())
+        temp_files = len(list(self.temp_dir.glob("**/*")))
         
         return {
-            "storage": {
-                "total": self.max_storage_bytes,
-                "used": total_size,
-                "available": self.max_storage_bytes - total_size,
-                "percent": (total_size / self.max_storage_bytes) * 100
-            },
-            "memory": {
-                "total": self.max_memory_bytes,
-                "used": memory,
-                "available": self.max_memory_bytes - memory,
-                "percent": (memory / self.max_memory_bytes) * 100
-            },
-            "files": {
-                "temp": temp_count,
-                "cache": cache_count,
-                "results": results_count
-            }
+            "memory_usage_mb": memory_usage / (1024 * 1024),
+            "storage_usage_mb": total_size / (1024 * 1024),
+            "temp_files_count": temp_files,
+            "max_memory_mb": self.max_memory / (1024 * 1024),
+            "max_storage_mb": self.max_storage / (1024 * 1024)
         } 

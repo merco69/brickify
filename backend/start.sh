@@ -10,9 +10,6 @@ python -m pip install --upgrade pip
 cd /opt/render/project/src
 pip install -e .
 
-# Vérifier la disponibilité du GPU
-nvidia-smi
-
 # Créer les répertoires nécessaires
 mkdir -p /data/storage/temp
 mkdir -p /data/storage/cache

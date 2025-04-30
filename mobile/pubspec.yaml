@@ -26,6 +26,17 @@ dependencies:
   intl: ^0.18.1
   geolocator: ^10.0.0
   geocoding: ^2.1.0
+  # PyTorch Mobile dependencies
+  tflite_flutter: ^0.10.4
+  tflite_flutter_helper: ^0.3.1
+  image: ^4.1.7
+  path: ^1.8.3
+  # Performance monitoring
+  firebase_performance: ^0.9.3+16
+  # Analytics
+  firebase_analytics: ^10.8.0
+  # Crash reporting
+  firebase_crashlytics: ^3.4.9
 
 dev_dependencies:
   flutter_test:
@@ -38,4 +49,5 @@ flutter:
   assets:
     - .env
     - assets/images/
-    - assets/models/ 
+    - assets/models/
+    - assets/ml/ 

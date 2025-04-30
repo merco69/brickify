@@ -6,12 +6,9 @@ COPY frontend/src ./src
 RUN mvn clean package -DskipTests
 
 # Run stage
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
-
-# Install JavaFX dependencies
-RUN apk add --no-cache openjfx
 
 EXPOSE 3000
 CMD ["java", "-jar", "app.jar"] 

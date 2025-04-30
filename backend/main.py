@@ -13,19 +13,21 @@ from services.blocky_resource_manager import BlockyResourceManager
 from services.blocky_optimizer import BlockyOptimizer
 from services.storage_service import StorageService
 from services.database_service import DatabaseService
+from routers import mobile
+from config.mobile_config import LOG_LEVEL, LOG_FORMAT, API_TITLE, API_VERSION, API_DESCRIPTION
 
 # Configuration des logs
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=LOG_LEVEL,
+    format=LOG_FORMAT
 )
 logger = logging.getLogger(__name__)
 
 # Création de l'application
 app = FastAPI(
-    title="Brickify API",
-    description="API pour l'application Brickify",
-    version="1.0.0"
+    title=API_TITLE,
+    version=API_VERSION,
+    description=API_DESCRIPTION
 )
 
 # Configuration CORS
@@ -55,10 +57,7 @@ async def monitor_requests(request, call_next):
 @app.get("/")
 async def root():
     """Route de base pour vérifier que l'API fonctionne"""
-    return {
-        "message": "Bienvenue sur l'API Brickify",
-        "version": "1.0.0"
-    }
+    return {"message": "Bienvenue sur l'API Brickify Mobile"}
 
 @app.get("/health")
 async def health_check():
@@ -143,7 +142,9 @@ async def get_stats():
         logger.error(f"Erreur lors de la récupération des stats: {str(e)}")
         return {"error": str(e)}
 
+# Routers
+app.include_router(mobile.router)
+
 if __name__ == "__main__":
     import uvicorn
-    port = int(settings.PORT)
-    uvicorn.run(app, host="0.0.0.0", port=port) 
+    uvicorn.run(app, host="0.0.0.0", port=8000) 

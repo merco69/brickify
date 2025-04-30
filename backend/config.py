@@ -1,12 +1,14 @@
 import os
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, BaseSettings
 from dotenv import load_dotenv
+from pathlib import Path
+from functools import lru_cache
 
 # Chargement des variables d'environnement
 load_dotenv()
 
-class Settings(BaseModel):
+class Settings(BaseSettings):
     """Configuration de l'application"""
     
     # Version et environnement
@@ -24,6 +26,34 @@ class Settings(BaseModel):
     SECRET_KEY: str = os.getenv("JWT_SECRET", "votre_secret_jwt_super_secret")
     ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    
+    # Blocky settings
+    models_dir: str = "data/models"
+    temp_dir: str = "data/temp"
+    max_memory_mb: int = 4096  # 4GB
+    max_storage_mb: int = 10240  # 10GB
+    cleanup_interval_seconds: int = 3600  # 1 hour
+    max_temp_files: int = 1000
+    max_file_age_hours: int = 24
+    
+    # GPU settings
+    use_gpu: bool = True
+    gpu_memory_fraction: float = 0.8
+    batch_size: int = 4
+    num_workers: int = 4
+    
+    class Config:
+        env_file = ".env"
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
+
+# Ensure directories exist
+def init_directories():
+    settings = get_settings()
+    Path(settings.models_dir).mkdir(parents=True, exist_ok=True)
+    Path(settings.temp_dir).mkdir(parents=True, exist_ok=True)
 
 # Instance de configuration
 settings = Settings()

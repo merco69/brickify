@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: brickify-mobile-api
+    env: python
+    region: frankfurt
+    plan: pro
+    buildCommand: |
+      python -m pip install --upgrade pip
+      pip install -r backend/requirements.txt
+      pip install torch==2.0.0+cu117 torchvision==0.15.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: PORT
+        value: 8001
+      - key: DEVICE
+        value: cuda
+      - key: NUM_WORKERS
+        value: 2
+      - key: BATCH_SIZE
+        value: 16
+      - key: PRECISION
+        value: float16
+      - key: MODEL_PATH
+        value: /opt/render/project/src/models
+    disk:
+      name: models
+      mountPath: /opt/render/project/src/models
+      sizeGB: 10
+    scaling:
+      minInstances: 1
+      maxInstances: 2
+      targetMemoryPercent: 80
+      targetCPUPercent: 80
+    healthCheckPath: /health
+    autoDeploy: true
+    gpu:
+      enabled: true
+      type: t4 
